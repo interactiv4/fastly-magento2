@@ -102,11 +102,18 @@ class CountryMapping extends AbstractFieldArray
     protected function getOptions($label = false) // @codingStandardsIgnoreLine - required by parent class
     {
         $options = [];
-        foreach ($this->_storeManager->getStores() as $store) {
-            $options[] = [
-                'value' => $store->getId(),
-                'label' => $store->getName() . " [" . $store->getCode() . "]"
+        foreach ($this->_storeManager->getWebsites() as $website) {
+            $websiteOptions = [
+                'label' => $website->getName() . " [" . $website->getCode() . "]",
+                'value' => [],
             ];
+            foreach ($website->getStores() as $store) {
+                $websiteOptions['value'][] = [
+                    'value' => $store->getId(),
+                    'label' => $store->getName() . " [" . $store->getCode() . "]"
+                ];
+            }
+            $options[] = $websiteOptions;
         }
 
         if ($label) {

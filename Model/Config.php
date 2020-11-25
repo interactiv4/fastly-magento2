@@ -539,6 +539,11 @@ class Config extends \Magento\PageCache\Model\Config
     const UPDATED_VCL_FLAG = 'Fastly/Cdn/updated_VCL_to_Fastly_flag';
 
     /**
+     * @var \Magento\Store\Model\StoreManagerInterface
+     */
+    private $storeManager;
+
+    /**
      * @var Json|null
      */
     private $serializer;
@@ -558,8 +563,10 @@ class Config extends \Magento\PageCache\Model\Config
         StateInterface $cacheState,
         Dir\Reader $reader,
         VclGeneratorFactory $vclGeneratorFactory,
+        \Magento\Store\Model\StoreManagerInterface $storeManager,
         Json $serializer = null
     ) {
+        $this->storeManager = $storeManager;
         $this->serializer = $serializer ?: ObjectManager::getInstance()->get(Json::class);
         parent::__construct($readFactory, $scopeConfig, $cacheState, $reader, $vclGeneratorFactory, $serializer);
     }
@@ -1098,28 +1105,36 @@ class Config extends \Magento\PageCache\Model\Config
             }
         }
 
-        if (is_array($extractMapping)) {
-            $countryId = 'country_id';
-            $key = 'store_id';
-            // check for direct match
+        if (!is_array($extractMapping)) {
+            return $final;
+        }
+
+        try {
             foreach ($extractMapping as $map) {
-                if (is_array($map) &&
-                    isset($map[$countryId]) &&
-                    strtolower(str_replace(' ', '', $map[$countryId])) == strtolower($countryCode)) {
-                    if (isset($map[$key])) {
-                        return (int)$map[$key];
-                    }
-                } elseif (is_array($map) &&
-                    isset($map[$countryId]) &&
-                    $map[$countryId] == '*' &&
-                    isset($map[$key]) &&
-                    $final === null) {
-                    // check for wildcard
-                    $final = (int)$map[$key];
+                if (!is_array($map) || !isset($map['country_id']) || !isset($map['store_id'])) {
+                    continue;
+                }
+                if ($storeId = $this->extractStoreForCurrentWebsite($map, $countryCode)) {
+                    return $storeId;
+                } elseif ($final === null && $storeId = $this->extractStoreForCurrentWebsite($map, '*')) {
+                    return $storeId;
                 }
             }
+            return $final;
+        } catch (\Exception $e) {
+            return $final;
         }
-        return $final;
+    }
+
+    private function extractStoreForCurrentWebsite($map, $countryCode)
+    {
+        $store = $this->storeManager->getStore($map['store_id']);
+        $website = $this->storeManager->getWebsite();
+        if (strtolower(str_replace(' ', '', $map['country_id'])) === strtolower($countryCode) &&
+            $store->getWebsiteId() === $website->getId()) {
+            return (int) $store->getId();
+        }
+        return 0;
     }
 
     /**
